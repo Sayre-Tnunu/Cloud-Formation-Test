@@ -1,0 +1,79 @@
+# The Deployment object expresses the desired state for your app
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: mywebserver-dev
+  labels:
+    app: webserver
+    course: introtodevops
+    environment: dev
+spec:
+  # Specify how many pods of this type k8s will run in this deployment
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webserver
+      course: introtodevops
+      environment: dev
+  template:
+    metadata:
+      labels:
+        app: webserver
+        course: introtodevops
+        environment: dev
+    spec:
+      # Specify the container(s) to run inside each pod.
+      containers:
+        - name: webserver
+          image: nginx
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: default
+              containerPort: 80
+              protocol: TCP
+---
+# Configure the app to be used by other apps
+kind: Service
+apiVersion: v1
+metadata:
+  name: mywebserver-dev
+  labels:
+    app: webserver
+    course: introtodevops
+    environment: dev
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: default
+      protocol: TCP
+      name: svcport
+  # Selects pods to send traffic to by matching selectors to pod labels
+  selector:
+    app: webserver
+    course: introtodevops
+    environment: dev
+---
+# Create an ingress object to connect the pod(s) to the Ingress Controller we created in the previous lab
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: mywebserver-dev
+  labels:
+    app: webserver
+    course: introtodevops
+    environment: dev
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+  - host: mywebserver
+    http:
+      paths:
+      - path: /
+        pathType: Exact
+        backend:
+          service:
+            name: mywebserver-dev
+            port:
+              name: svcport
