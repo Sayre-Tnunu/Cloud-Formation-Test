@@ -1,0 +1,139 @@
+Description:
+  This template launches a basic network and server setup
+
+# We only need this map to determine which AMI to use.
+# To support more regions, you'll have to look up the region-specific AMI and add it here.
+Mappings:
+  RegionMap:
+    us-east-1:
+      ami: ami-00d7789069a972200 # <------------------ubuntu 19.04 image
+    us-west-2:
+      ami: ami-0e2e3e63c545211e2 # <------------------ubuntu 19.04 image
+
+Resources:
+
+  # This part is the most relevant for our class.
+  # Configuration for automatically launching a server in AWS.
+  MyServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      # Grab the correct machine image based on our region
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", ami ]
+      # Install the key we created on the server
+
+      ##### UPDATE THIS KEY NAME #####
+      KeyName: my_key # <-------- make sure this matches your ACTUAL SSH KEY NAME
+
+
+      #Put a disk drive on the server
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeType: 'gp2'
+            DeleteOnTermination: 'true'
+            VolumeSize: '8'
+      # Create a very small server
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        -
+          GroupSet:
+            # Allow all intra-VPC traffic
+            - !GetAtt MyVPC.DefaultSecurityGroup
+            # Allow web and SSH traffic from everywhere
+            - !Ref MySecurityGroup
+          # Make sure the server has a public IP address
+          AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: 0
+          SubnetId: !Ref MySubnet
+      UserData:
+        "Fn::Base64":
+          "Fn::Join":
+            - "\n"
+            - - "#!/bin/bash"
+              - apt update
+              - apt install -y docker.io
+              - usermod -aG docker ubuntu
+              - reboot
+              - echo Hello World!
+
+
+  MyElasticIP:
+    Type: "AWS::EC2::EIPAssociation"
+    Properties:
+
+      ##### UPDATE THIS ALLOCATION ID #####
+      AllocationId: eipalloc-06ecad185d4746197 # <---- update this allocation ID
+
+      InstanceId: !Ref MyServer
+
+  # This Security Group allows connections on port 80 (web) and 22 (SSH)
+  MySecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Basic (in)security group for devops demo
+      SecurityGroupIngress:
+        # Allow web traffic
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        # Allow SSH traffic
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MyVPC
+
+  # Everything below is network stuff.  Not going to cover this in detail.
+  # I really hope that you have somebody to help you with this in your professional life.
+  # For now, ignore this part.  But you can use it for reference later if you're interested.
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.234.0.0/16
+      EnableDnsHostnames: 'true'
+
+  MyInternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  MyVpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MyRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+
+  MyInternetRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+      RouteTableId: !Ref MyRouteTable
+
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 10.234.0.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref MyVPC
+
+  mySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MySubnet
+      RouteTableId: !Ref MyRouteTable
+
+# Major gaps in this template/stack:
+#   SSH should not be open to the world
+#   Ideally, we'd create an IAM role for the server
+#   Multiple subnets (availability zones) would provide resiliency in case of an Amazon outage
+#   A launch configuration, autoscaling group, and elastic load balancer would provide better resiliency in case of server failure
