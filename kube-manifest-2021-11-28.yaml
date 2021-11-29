@@ -27,11 +27,11 @@ spec:
         - name: webserver
           image: nginx
           securityContext:
-          capabilities:
-            drop:
-              - all
-            add:
-              - NET_BIND_SERVICE
+            capabilities:
+              drop:
+                - all
+              add:
+                - NET_BIND_SERVICE
           imagePullPolicy: Always
           ports:
             - name: default
